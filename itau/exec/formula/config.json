@@ -1,0 +1,13 @@
+{
+  "dockerImageBuilder": "cimg/go:1.14",
+  "inputs": [
+    {
+      "name": "username",
+      "type": "CREDENTIAL_ITAU_USERNAME"
+    },
+    {
+      "name": "password",
+      "type": "CREDENTIAL_ITAU_PASSWORD"
+    }
+  ]
+}
