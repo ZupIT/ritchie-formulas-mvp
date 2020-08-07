@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -16,7 +17,7 @@ import (
 )
 
 const (
-	host = "http://0.0.0.0:8882"
+	host = "https://dennis.devdennis.zup.io"
 )
 
 type Inputs struct {
@@ -71,13 +72,62 @@ type commandRequest struct {
 	Inputs  inputs `json:"inputs,omitempty"`
 }
 
+type executionResponse struct {
+	Status  string  `json:"status,omitempty"`
+	Content content `json:"content,omitempty"`
+}
+
+type content struct {
+	ID         string   `json:"id,omitempty"`
+	StatusCode int      `json:"statusCode,omitempty"`
+	User       string   `json:"user,omitempty"`
+	StartTime  ExecTime `json:"startTime,omitempty"`
+	EndTime    ExecTime `json:"endTime,omitempty"`
+	FormulaErr string   `json:"formulaErr,omitempty"`
+	FormulaOut string   `json:"formulaOutput,omitempty"`
+}
+
+type ExecTime time.Time
+
+func (t ExecTime) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.FormatInt(time.Time(t).Unix(), 10)), nil
+}
+
+func (t *ExecTime) UnmarshalJSON(s []byte) (err error) {
+	r := string(s)
+	q, err := strconv.ParseInt(r, 10, 64)
+	if err != nil {
+		return err
+	}
+	*(*time.Time)(t) = time.Unix(q, 0)
+	return nil
+}
+
+func (t ExecTime) Unix() int64 {
+	return time.Time(t).Unix()
+}
+
+func (t ExecTime) Time() time.Time {
+	return time.Time(t).UTC()
+}
+
+func (t ExecTime) String() string {
+	return t.Time().String()
+}
+
+func (t ExecTime) Sub(o ExecTime) time.Duration {
+	return time.Time(t).Sub(time.Time(o))
+}
+
 func (in Inputs) Run() {
+	// login
 	loginResp, err := in.login()
 	if err != nil {
 		prompt.Error(err.Error())
 		os.Exit(1)
 	}
 
+	// formulas e context
 	formulasResp, err := in.formulas(loginResp.Token)
 	if err != nil {
 		prompt.Error(err.Error())
@@ -114,14 +164,64 @@ func (in Inputs) Run() {
 		}
 	}
 
+	// prompt dos inputs da form escolhida + send command
 	cmdID, err := in.sendCommand(form, loginResp.Token, ctx)
 	if err != nil {
 		prompt.Error(err.Error())
 		os.Exit(1)
 	}
 
-	prompt.Info(cmdID)
+	// pooling de timeout 60seg
+	now := time.Now()
+	ticker := time.NewTicker(6 * time.Second)
+	defer ticker.Stop()
+	done := make(chan bool)
+	go in.checkExecution(loginResp.Token, cmdID, ctx, done)
+	for {
+		select {
+		case <-done:
+			return
+		case t := <-ticker.C:
+			diff := t.Sub(now)
+			if diff.Seconds() >= 60 {
+				prompt.Info("Your request is being processed. You can check the execution with the command [rit rocket check execution]")
+				prompt.Info(fmt.Sprintf("Execution ID: %s", cmdID))
+				prompt.Info(fmt.Sprintf("Execution context: %s", ctx))
+				return
+			} else {
+				go in.checkExecution(loginResp.Token, cmdID, ctx, done)
+			}
+		}
+	}
+}
 
+func (in Inputs) checkExecution(token, cmdID, ctx string, done chan bool) {
+	prompt.Info("Awaiting execution...")
+	time.Sleep(1 * time.Second)
+	prompt.Info(".")
+	time.Sleep(1 * time.Second)
+	prompt.Info("..")
+	time.Sleep(1 * time.Second)
+	prompt.Info("...")
+	time.Sleep(1 * time.Second)
+	prompt.Info("....")
+	time.Sleep(1 * time.Second)
+	prompt.Info(".....")
+
+	execResp, err := in.Execution(token, cmdID, ctx)
+	if err != nil {
+		prompt.Error(err.Error())
+		prompt.Info("Retrying...")
+	} else if execResp.Status == "Ready" {
+		prompt.Success("done")
+		cont := execResp.Content
+		execTime := cont.EndTime.Sub(cont.StartTime)
+		prompt.Info(fmt.Sprintf("Execution ID: %s", cmdID))
+		prompt.Info(fmt.Sprintf("Execution time: %s", execTime.String()))
+		fmt.Println("-----")
+		prompt.Info(execResp.Content.FormulaErr)
+		done <- true
+	}
 }
 
 func (in Inputs) login() (loginResponse, error) {
@@ -163,7 +263,7 @@ func (in Inputs) login() (loginResponse, error) {
 		if err = json.Unmarshal(b, &loginResp); err != nil {
 			return loginResp, fmt.Errorf("error decoding response: %w", err)
 		}
-		prompt.Info("done")
+		prompt.Success("done")
 		return loginResp, err
 	case 401:
 		return loginResp, errors.New("login failed! Verify your credentials")
@@ -203,7 +303,7 @@ func (in Inputs) formulas(token string) (formulasResponse, error) {
 		if err = json.Unmarshal(b, &formulasResp); err != nil {
 			return formulasResp, fmt.Errorf("error decoding response: %w", err)
 		}
-		prompt.Info("done")
+		prompt.Success("done")
 		return formulasResp, err
 	} else {
 		return formulasResp, errors.New("error obtaining formulas")
@@ -292,11 +392,51 @@ func (in Inputs) sendCommand(form formula, token, ctx string) (string, error) {
 
 	switch resp.StatusCode {
 	case 201:
-		prompt.Info("done")
+		prompt.Success("done")
 		return cmdReq.ID, err
-	case 401:
-		return "", errors.New("command failed! Verify your credentials")
+	case 401, 403:
+		return "", errors.New("authorization failed! Verify your credentials")
 	default:
 		return "", errors.New("command failed")
+	}
+}
+
+func (in Inputs) Execution(token, ID, ctx string) (executionResponse, error) {
+	execResp := executionResponse{}
+
+	execURL := fmt.Sprintf("%s/executions/%s", host, ID)
+	req, err := http.NewRequest(http.MethodGet, execURL, nil)
+	if err != nil {
+		return execResp, fmt.Errorf("error creating request: %w", err)
+	}
+
+	req.Header.Set("x-org", "zup")
+	req.Header.Set("x-authorization", token)
+	req.Header.Set("x-ctx", ctx)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return execResp, fmt.Errorf("error getting execution: %w", err)
+	}
+
+	defer resp.Body.Close()
+
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return execResp, fmt.Errorf("error reading response: %w", err)
+	}
+
+	switch resp.StatusCode {
+	case 200:
+		if err = json.Unmarshal(b, &execResp); err != nil {
+			return execResp, fmt.Errorf("error decoding response: %w", err)
+		}
+		return execResp, nil
+	case 401, 403:
+		return execResp, errors.New("authorization failed! Verify your credentials")
+	case 404:
+		return execResp, nil
+	default:
+		return execResp, errors.New("error getting execution")
 	}
 }

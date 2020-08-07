@@ -1,8 +1,8 @@
 package main
 
 import (
-	"itau/formula/pkg/formula"
 	"os"
+	"rocket/formula/pkg/formula"
 )
 
 func main() {

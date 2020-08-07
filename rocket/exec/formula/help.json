@@ -1,0 +1,4 @@
+{
+	"short": "execute a remote formula",
+	"long": "execute a remote formula over http -h"
+}

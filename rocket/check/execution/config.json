@@ -1,0 +1,33 @@
+{
+  "dockerImageBuilder": "cimg/go:1.14",
+  "inputs": [
+    {
+      "name": "username",
+      "type": "CREDENTIAL_ITAU_USERNAME"
+    },
+    {
+      "name": "password",
+      "type": "CREDENTIAL_ITAU_PASSWORD"
+    },
+    {
+      "cache": {
+        "active": true,
+        "newLabel": "Type new value. ",
+        "qty": 6
+      },
+      "label": "Context: ",
+      "name": "context",
+      "type": "text"
+    },
+    {
+      "cache": {
+        "active": true,
+        "newLabel": "Type new value. ",
+        "qty": 6
+      },
+      "label": "Execution ID: ",
+      "name": "execution_id",
+      "type": "text"
+    }
+  ]
+}

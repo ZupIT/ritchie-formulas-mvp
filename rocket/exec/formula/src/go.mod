@@ -1,4 +1,4 @@
-module itau/formula
+module rocket/formula
 
 go 1.14
 

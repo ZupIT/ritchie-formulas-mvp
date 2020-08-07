@@ -97,3 +97,27 @@
 
   response:
     status: 201
+
+
+- request:
+    method: GET
+    url: /executions/(.*)
+
+  response:
+    status: 200
+    headers:
+      content-type: application/json
+    body: >
+      {
+          "status": "Ready",
+          "content": {
+              "endTime": 1596808787,
+              "formulaErr": "2020/08/07 13:59:44 Preparing your coffee  .....\n2020/08/07 13:59:44 ......\n2020/08/07 13:59:45 ......\n2020/08/07 13:59:46 ......\n2020/08/07 13:59:47 Your  coffee is ready, have a seat and enjoy your drink\n",
+              "formulaInputs": [],
+              "formulaOutput": "",
+              "id": "test-07",
+              "startTime": 1596808784,
+              "statusCode": 0,
+              "user": "user"
+          }
+      }
