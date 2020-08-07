@@ -219,6 +219,9 @@ func (in Inputs) checkExecution(token, cmdID, ctx string, done chan bool) {
 		prompt.Info(fmt.Sprintf("Execution ID: %s", cmdID))
 		prompt.Info(fmt.Sprintf("Execution time: %s", execTime.String()))
 		fmt.Println("-----")
+		fmt.Println("stdout:")
+		prompt.Info(execResp.Content.FormulaOut)
+		fmt.Println("stderr:")
 		prompt.Info(execResp.Content.FormulaErr)
 		done <- true
 	}
