@@ -132,6 +132,9 @@ func (in Inputs) Run() {
 		prompt.Info(fmt.Sprintf("Execution ID: %s", in.ExecutionID))
 		prompt.Info(fmt.Sprintf("Execution time: %s", execTime.String()))
 		fmt.Println("-----")
+		fmt.Println("stdout:")
+		prompt.Info(execResp.Content.FormulaOut)
+		fmt.Println("stderr:")
 		prompt.Info(execResp.Content.FormulaErr)
 	} else {
 		prompt.Info("Execution not found or it's being processed")
