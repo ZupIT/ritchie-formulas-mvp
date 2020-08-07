@@ -8,6 +8,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strconv"
+
+	"github.com/google/uuid"
 
 	"github.com/ZupIT/ritchie-cli/pkg/prompt"
 )
@@ -22,44 +25,51 @@ type Inputs struct {
 }
 
 type loginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
 }
 
 type loginResponse struct {
-	Token string `json:"token"`
-	TTL   int64  `json:"ttl"`
+	Token string `json:"token,omitempty"`
+	TTL   int64  `json:"ttl,omitempty"`
 }
 
 type formulasResponse struct {
-	Contexts contexts `json:"contexts"`
-	Formulas formulas `json:"formulas"`
+	Contexts contexts `json:"contexts,omitempty"`
+	Formulas formulas `json:"formulas,omitempty"`
 }
 
 type context struct {
-	Name string `json:"name"`
+	Name string `json:"name,omitempty"`
 }
 
 type contexts []context
 
 type formula struct {
-	Command string `json:"command"`
-	Inputs  inputs `json:"inputs"`
+	Command string `json:"command,omitempty"`
+	Inputs  inputs `json:"inputs,omitempty"`
 }
 
 type formulas []formula
 
 type input struct {
-	Name    string `json:"name"`
-	Label   string `json:"label"`
-	Type    string `json:"type"`
-	Items   items  `json:"items"`
-	Default string `json:"default"`
+	Name    string `json:"name,omitempty"`
+	Label   string `json:"label,omitempty"`
+	Type    string `json:"type,omitempty"`
+	Items   items  `json:"items,omitempty"`
+	Default string `json:"default,omitempty"`
+	Value   string `json:"value,omitempty"`
 }
 
 type items []string
 
 type inputs []input
+
+type commandRequest struct {
+	ID      string `json:"id,omitempty"`
+	Command string `json:"command,omitempty"`
+	Inputs  inputs `json:"inputs,omitempty"`
+}
 
 func (in Inputs) Run() {
 	loginResp, err := in.login()
@@ -68,7 +78,7 @@ func (in Inputs) Run() {
 		os.Exit(1)
 	}
 
-	formulasResp, err := in.formulas(loginResp)
+	formulasResp, err := in.formulas(loginResp.Token)
 	if err != nil {
 		prompt.Error(err.Error())
 		os.Exit(1)
@@ -86,19 +96,31 @@ func (in Inputs) Run() {
 		os.Exit(1)
 	}
 
-	prompt.Info(fmt.Sprintf("%s", ctx))
-
 	formList := make([]string, len(formulasResp.Formulas))
 	for i, f := range formulasResp.Formulas {
 		formList[i] = f.Command
 	}
-	form, err := list.List("Select a formula", formList)
+	formName, err := list.List("Select a formula", formList)
 	if err != nil {
 		prompt.Error(err.Error())
 		os.Exit(1)
 	}
 
-	prompt.Info(fmt.Sprintf("%s", form))
+	var form formula
+	for _, f := range formulasResp.Formulas {
+		if f.Command == formName {
+			form = f
+			break
+		}
+	}
+
+	cmdID, err := in.sendCommand(form, loginResp.Token, ctx)
+	if err != nil {
+		prompt.Error(err.Error())
+		os.Exit(1)
+	}
+
+	prompt.Info(cmdID)
 
 }
 
@@ -151,7 +173,7 @@ func (in Inputs) login() (loginResponse, error) {
 
 }
 
-func (in Inputs) formulas(loginResp loginResponse) (formulasResponse, error) {
+func (in Inputs) formulas(token string) (formulasResponse, error) {
 	prompt.Info("Obtaining formulas...")
 
 	formulasResp := formulasResponse{}
@@ -163,7 +185,7 @@ func (in Inputs) formulas(loginResp loginResponse) (formulasResponse, error) {
 	}
 
 	req.Header.Set("x-org", "zup")
-	req.Header.Set("x-authorization", loginResp.Token)
+	req.Header.Set("x-authorization", token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -185,5 +207,96 @@ func (in Inputs) formulas(loginResp loginResponse) (formulasResponse, error) {
 		return formulasResp, err
 	} else {
 		return formulasResp, errors.New("error obtaining formulas")
+	}
+}
+
+func (in Inputs) sendCommand(form formula, token, ctx string) (string, error) {
+	list := prompt.NewSurveyList()
+	text := prompt.NewSurveyText()
+	boolean := prompt.NewSurveyBool()
+	password := prompt.NewSurveyPassword()
+
+	inputs := make([]input, len(form.Inputs))
+	for i, in := range form.Inputs {
+		var err error
+		var inputVal string
+		var valBool bool
+		switch iType := in.Type; iType {
+		case "text":
+			if in.Items != nil {
+				inputVal, err = list.List(in.Label, in.Items)
+			} else {
+				validate := in.Default == ""
+				inputVal, err = text.Text(in.Label, validate)
+				if inputVal == "" {
+					inputVal = in.Default
+				}
+			}
+		case "bool":
+			valBool, err = boolean.Bool(in.Label, in.Items)
+			inputVal = strconv.FormatBool(valBool)
+		case "password":
+			inputVal, err = password.Password(in.Label)
+		}
+
+		if err != nil {
+			return "", fmt.Errorf("error reading inputs: %w", err)
+		}
+
+		inputs[i] = input{
+			Name:  in.Name,
+			Type:  in.Type,
+			Value: inputVal,
+		}
+	}
+
+	prompt.Info("Sending command...")
+
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return "", fmt.Errorf("error generatind UUID: %w", err)
+	}
+	cmdReq := commandRequest{
+		ID:      id.String(),
+		Command: form.Command,
+		Inputs:  inputs,
+	}
+
+	b, err := json.Marshal(&cmdReq)
+	if err != nil {
+		return "", fmt.Errorf("error encoding command: %w", err)
+	}
+
+	cmdURL := fmt.Sprintf("%s/commands", host)
+	req, err := http.NewRequest(http.MethodPost, cmdURL, bytes.NewBuffer(b))
+	if err != nil {
+		return "", fmt.Errorf("error creating request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-org", "zup")
+	req.Header.Set("x-ctx", ctx)
+	req.Header.Set("x-authorization", token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("error sending command: %w", err)
+	}
+
+	defer resp.Body.Close()
+
+	b, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("error reading response: %w", err)
+	}
+
+	switch resp.StatusCode {
+	case 201:
+		prompt.Info("done")
+		return cmdReq.ID, err
+	case 401:
+		return "", errors.New("command failed! Verify your credentials")
+	default:
+		return "", errors.New("command failed")
 	}
 }

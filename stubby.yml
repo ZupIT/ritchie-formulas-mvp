@@ -1,4 +1,3 @@
-#Post Login
 - request:
     method: POST
     url: /login
@@ -91,3 +90,10 @@
             }
         ]
         }
+
+- request:
+    method: POST
+    url: /commands
+
+  response:
+    status: 201
