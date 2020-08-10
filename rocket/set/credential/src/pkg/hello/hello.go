@@ -264,8 +264,8 @@ func (in Inputs) setCredential(token, ctx string) error {
 	prompt.Info("Authenticating...")
 
 	type CredentialAWS struct {
-		AccessKeyId     string `json:"accessKeyId"`
-		SecretAccessKey string `json:"secretAccessKey"`
+		AccessKeyId     string `json:"accesskeyid"`
+		SecretAccessKey string `json:"secretaccesskey"`
 	}
 
 	type CredentialGithub struct {
