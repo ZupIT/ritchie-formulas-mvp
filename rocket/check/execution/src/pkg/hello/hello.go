@@ -73,13 +73,14 @@ type executionResponse struct {
 }
 
 type content struct {
-	ID         string   `json:"id,omitempty"`
-	StatusCode int      `json:"statusCode,omitempty"`
-	User       string   `json:"user,omitempty"`
-	StartTime  ExecTime `json:"startTime,omitempty"`
-	EndTime    ExecTime `json:"endTime,omitempty"`
-	FormulaErr string   `json:"formulaErr,omitempty"`
-	FormulaOut string   `json:"formulaOutput,omitempty"`
+	ID            string   `json:"id,omitempty"`
+	StatusCode    int      `json:"statusCode,omitempty"`
+	User          string   `json:"user,omitempty"`
+	StartTime     ExecTime `json:"startTime,omitempty"`
+	EndTime       ExecTime `json:"endTime,omitempty"`
+	FormulaErr    string   `json:"formulaErr,omitempty"`
+	FormulaOut    string   `json:"formulaOutput,omitempty"`
+	FormulaInputs inputs   `json:"formulaInputs,omitempty"`
 }
 
 type ExecTime time.Time
@@ -129,13 +130,31 @@ func (in Inputs) Run() {
 	} else if execResp.Status == "Ready" {
 		cont := execResp.Content
 		execTime := cont.EndTime.Sub(cont.StartTime)
-		prompt.Info(fmt.Sprintf("Execution ID: %s", in.ExecutionID))
-		prompt.Info(fmt.Sprintf("Execution time: %s", execTime.String()))
-		fmt.Println("-----")
+		fmt.Println()
+		fmt.Println("-----------------------")
+
+		fmt.Print("Execution ID: ")
+		prompt.Info(execResp.Content.ID)
+
+		fmt.Print("Execution time: ")
+		prompt.Info(execTime.String())
+
+		fmt.Print("User: ")
+		prompt.Info(cont.User)
+		fmt.Println()
+
+		inputs, _ := json.Marshal(cont.FormulaInputs)
+		if inputs != nil {
+			fmt.Println("inputs:")
+			prompt.Info(string(inputs))
+		}
+		fmt.Println()
 		fmt.Println("stdout:")
 		prompt.Info(execResp.Content.FormulaOut)
+		fmt.Println()
 		fmt.Println("stderr:")
 		prompt.Info(execResp.Content.FormulaErr)
+		fmt.Println("-----------------------")
 	} else {
 		prompt.Info("Execution not found or it's being processed")
 	}

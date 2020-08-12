@@ -23,6 +23,7 @@ const (
 type Inputs struct {
 	Username string
 	Password string
+	IPAddr   string
 }
 
 type loginRequest struct {
@@ -78,13 +79,14 @@ type executionResponse struct {
 }
 
 type content struct {
-	ID         string   `json:"id,omitempty"`
-	StatusCode int      `json:"statusCode,omitempty"`
-	User       string   `json:"user,omitempty"`
-	StartTime  ExecTime `json:"startTime,omitempty"`
-	EndTime    ExecTime `json:"endTime,omitempty"`
-	FormulaErr string   `json:"formulaErr,omitempty"`
-	FormulaOut string   `json:"formulaOutput,omitempty"`
+	ID            string   `json:"id,omitempty"`
+	StatusCode    int      `json:"statusCode,omitempty"`
+	User          string   `json:"user,omitempty"`
+	StartTime     ExecTime `json:"startTime,omitempty"`
+	EndTime       ExecTime `json:"endTime,omitempty"`
+	FormulaErr    string   `json:"formulaErr,omitempty"`
+	FormulaOut    string   `json:"formulaOutput,omitempty"`
+	FormulaInputs inputs   `json:"formulaInputs,omitempty"`
 }
 
 type ExecTime time.Time
@@ -187,7 +189,6 @@ func (in Inputs) Run() {
 				prompt.Info("Your request is being processed. You can check the execution with the command [rit rocket check execution]")
 				prompt.Info(fmt.Sprintf("Execution ID: %s", cmdID))
 				prompt.Info(fmt.Sprintf("Execution context: %s", ctx))
-				return
 			} else {
 				go in.checkExecution(loginResp.Token, cmdID, ctx, done)
 			}
@@ -214,15 +215,35 @@ func (in Inputs) checkExecution(token, cmdID, ctx string, done chan bool) {
 		prompt.Info("Retrying...")
 	} else if execResp.Status == "Ready" {
 		prompt.Success("done")
+		fmt.Println()
+		fmt.Println("-----------------------")
+
 		cont := execResp.Content
 		execTime := cont.EndTime.Sub(cont.StartTime)
-		prompt.Info(fmt.Sprintf("Execution ID: %s", cmdID))
-		prompt.Info(fmt.Sprintf("Execution time: %s", execTime.String()))
-		fmt.Println("-----")
+
+		fmt.Print("Execution ID: ")
+		prompt.Info(cmdID)
+
+		fmt.Print("Execution time: ")
+		prompt.Info(execTime.String())
+
+		fmt.Print("User: ")
+		prompt.Info(cont.User)
+		fmt.Println()
+
+		inputs, _ := json.Marshal(cont.FormulaInputs)
+		if inputs != nil {
+			fmt.Println("inputs:")
+			prompt.Info(string(inputs))
+		}
+		fmt.Println()
 		fmt.Println("stdout:")
 		prompt.Info(execResp.Content.FormulaOut)
+		fmt.Println()
 		fmt.Println("stderr:")
 		prompt.Info(execResp.Content.FormulaErr)
+		fmt.Println("-----------------------")
+
 		done <- true
 	}
 }
@@ -351,6 +372,12 @@ func (in Inputs) sendCommand(form formula, token, ctx string) (string, error) {
 			Type:  in.Type,
 			Value: inputVal,
 		}
+	}
+
+	inputs[len(inputs)-1] = input{
+		Name:  "IPAddr",
+		Type:  "text",
+		Value: in.IPAddr,
 	}
 
 	prompt.Info("Sending command...")
