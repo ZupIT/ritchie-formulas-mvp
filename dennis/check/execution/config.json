@@ -1,0 +1,28 @@
+{
+  "dockerImageBuilder": "cimg/python:3.8",
+  "inputs": [
+    {
+      "name": "username",
+      "type": "CREDENTIAL_ITAU_USERNAME"
+    },
+    {
+      "name": "password",
+      "type": "CREDENTIAL_ITAU_PASSWORD"
+    },
+    {
+      "cache": {
+        "active": true,
+        "newLabel": "Type new value. ",
+        "qty": 6
+      },
+      "label": "Context: ",
+      "name": "context",
+      "type": "text"
+    },
+    {
+      "label": "Execution ID: ",
+      "name": "execution_id",
+      "type": "text"
+    }
+  ]
+}
